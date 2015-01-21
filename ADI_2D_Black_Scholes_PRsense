@@ -1,0 +1,198 @@
+%
+%    ADI for 2D Black-Scholes Equation
+%    detail of the scheme can be checked in report 
+%
+clear all;
+format long;
+tic
+%==========================================================================
+% Parameters 
+%==========================================================================
+K = 100;
+S2_max = 3*K;
+S1_max = 3*(S2_max + K);
+sigma1 = 0.2;
+sigma2 = 0.1;
+r = 0.1;
+q1 = 0.01;
+q2 = 0.05;
+rho = 0.8;
+T = 1;
+N_i = 31;
+N_j = 31;
+N_time_step = 21;
+delta_S1 = S1_max / (N_i - 1);
+delta_S2 = S2_max / (N_j - 1);
+delta_tau = T / (N_time_step - 1);
+S1 = (0 : delta_S1 : S1_max)';  
+S2 = (0 : delta_S2 : S2_max)'; 
+Tau_vector = 0 : delta_tau : T;    
+i_vector = (2 : N_i-1)';
+j_vector = (2 : N_j-1)';
+S1_i = S1(i_vector);   S2_j = S2(j_vector); 
+
+%==========================================================================
+% Memory Allocation
+%==========================================================================
+V = zeros(N_i,N_j);
+coef_cross_i = zeros(N_j,1);  coef_cross_j = zeros(N_i,1);
+RHS_1 = zeros(N_i-2,1);  RHS_2 = zeros(N_j-2,1);  
+V_sudo = zeros(N_i,N_j);  V_new = zeros(N_i,N_j);
+
+%==========================================================================
+% Initial condition  
+%==========================================================================
+for j = 1 : N_j 
+    V(:,j) = max(S1 - S2(j) - K,0);
+end
+
+%for i = 1 : N_i
+%    V(i,:) = max(S2 - S1(i) - K,0);
+%end
+%V = 0.5 * ones(N_i,N_j);
+
+for t = 1 : N_time_step - 1
+tau = (t) * delta_tau;
+tau_now = (t-1) * delta_tau;
+tau_half = (t-0.5) * delta_tau;
+%==========================================================================
+%  Analytical Solution
+%==========================================================================
+U = zeros(N_i,N_j);
+U_now = zeros(N_i,N_j);
+U_half = zeros(N_i,N_j);
+for nj = 1 : N_j
+    S2_AS = (nj-1)*delta_S2;
+    sigma = sqrt(sigma1^2 - 2*rho*sigma1*sigma2*(S2_AS./(S2_AS+K*exp(-r*tau))) + (S2_AS./(S2_AS+K*exp(-r*tau))).^2 * sigma2^2);
+    r_tilda = (r*S2_AS./((S2_AS) + K*exp(-r*tau)));
+    q2_tilda = q2*S2_AS./(S2_AS+K*exp(-r*tau));
+    d1 = (log(S1./(S2_AS+K*exp(-r*tau))) + (r - r_tilda + q2_tilda - q1 + 0.5*sigma.^2))./(sigma*sqrt(tau));
+    d2 = d1 - sigma*sqrt(tau);
+    U(:,nj) = S1 .* exp(-q1*tau).*normcdf(d1) - (K * exp(-r*tau)+S2_AS).*exp(-(r - r_tilda - q2_tilda)*tau).*normcdf(d2);
+    
+    sigma_now = sqrt(sigma1^2 - 2*rho*sigma1*sigma2*(S2_AS./(S2_AS+K*exp(-r*tau_now))) + (S2_AS./(S2_AS+K*exp(-r*tau_now))).^2 * sigma2^2);
+    r_tilda_now = (r*S2_AS./((S2_AS) + K*exp(-r*tau_now)));
+    q2_tilda_now = q2*S2_AS./(S2_AS+K*exp(-r*tau_now));
+    d1_now = (log(S1./(S2_AS+K*exp(-r*tau_now))) + (r - r_tilda_now + q2_tilda_now - q1 + 0.5*sigma_now.^2))./(sigma_now*sqrt(tau_now));
+    d2_now = d1_now - sigma_now*sqrt(tau_now);
+    U_now(:,nj) = S1 .* exp(-q1*tau_now).*normcdf(d1_now) - (K * exp(-r*tau_now)+S2_AS).*exp(-(r - r_tilda_now - q2_tilda_now)*tau_now).*normcdf(d2_now);
+    
+    sigma_half = sqrt(sigma1^2 - 2*rho*sigma1*sigma2*(S2_AS./(S2_AS+K*exp(-r*tau_half))) + (S2_AS./(S2_AS+K*exp(-r*tau_half))).^2 * sigma2^2);
+    r_tilda_half = (r*S2_AS./((S2_AS) + K*exp(-r*tau_half)));
+    q2_tilda_half = q2*S2_AS./(S2_AS+K*exp(-r*tau_half));
+    d1_half = (log(S1./(S2_AS+K*exp(-r*tau_half))) + (r - r_tilda_half + q2_tilda_half - q1 + 0.5*sigma_half.^2))./(sigma_half*sqrt(tau_half));
+    d2_half = d1_half - sigma_half*sqrt(tau_half);
+    U_half(:,nj) = S1 .* exp(-q1*tau_half).*normcdf(d1_half) - (K * exp(-r*tau_half)+S2_AS).*exp(-(r - r_tilda_half - q2_tilda_half)*tau_half).*normcdf(d2_half);
+    
+end
+figure(1)
+surf(S2,S1,U);
+
+
+%figure(2)
+
+%==========================================================================
+% Boundary  condition
+%==========================================================================
+%tau = (t) * delta_tau;
+
+%F = S1_i * exp((r-q1)*tau);
+%alpha1 = (log(F./K) + 0.5*sigma1^2*tau)./(sigma1*sqrt(tau));
+%alpha2 = alpha1 - sigma1*sqrt(tau);
+
+%V(1,2:end-1) = 0;  % B.C 1
+%V(2:end-1,1) = exp(-r*tau).*(F.*normcdf(alpha1) - K.*normcdf(alpha2));  % B.C 2
+%V(N_i,2:end-1) = exp(-q1*tau)*S1_max - exp(-r*tau)*(S2_j + K);  % B.C 3
+V(1,2:end-1) = U(1,2:end-1);  V(2:end-1,1) = U(2:end-1,1); V(N_i,2:end-1) = U(N_i,2:end-1);  V(:,N_j) = U(:,N_j);
+V(1,1) = U(1,1); V(end,1) = U(end,1); V(1,end) = U(1,end); V(end,end) = U(end,end);
+
+
+%==========================================================================
+% ADI : step 1
+%==========================================================================
+    a_i = (-sigma1^2 * S1_i.^2)/(2*(delta_S1)^2) + ((r - q1)*S1_i)/(2*delta_S1);
+    b_i = (2/delta_tau + (sigma1^2 * S1_i.^2)/(delta_S1).^2 + r);   
+    c_i = (-sigma1^2 * S1_i.^2)/(2*(delta_S1)^2) - ((r - q1)*S1_i)/(2*delta_S1);   
+    H_1 = diag(b_i) + diag(a_i(2:end),-1) + diag(c_i(1:end-1),1); 
+    for j = 2 : N_j-1
+        
+        coef_cross_i = rho*sigma1*sigma2*S1_i*S2(j)/(4*delta_S1*delta_S2);        
+        RHS_1 =   -coef_cross_i .* V(i_vector-1,j+1)  ...
+                         +((sigma2^2*S2(j)^2)/(2*(delta_S2)^2) + (r-q2)*S2(j)/(2*delta_S2)) .* V(i_vector,j+1) ...
+                         + coef_cross_i .* V(i_vector+1,j+1)...
+                         + (2/delta_tau - (sigma2^2*S2(j)^2)/(delta_S2)^2) .* V(i_vector,j)...
+                         + coef_cross_i .* V(i_vector-1,j-1)...
+                         + ((sigma2^2*S2(j)^2)/(2*(delta_S2)^2) - (r-q2)*S2(j)/(2*delta_S2)) .* V(i_vector,j-1)...
+                         - coef_cross_i .* V(i_vector+1,j-1);
+  %            RHS_1 =  ((sigma2^2*S2(j)^2)/(2*(delta_S2)^2) + (r-q2)*S2(j)/(2*delta_S2)) .* V(i_vector,j+1)...
+  %                     +(2/delta_tau - (sigma2^2*S2(j)^2)/(delta_S2)^2) .* V(i_vector,j)...
+  %                     +((sigma2^2*S2(j)^2)/(2*(delta_S2)^2) - (r-q2)*S2(j)/(2*delta_S2)) .* V(i_vector,j-1);
+                   
+        RHS_1(1) = RHS_1(1) - a_i(1)*V(1,j);
+        RHS_1(end) = RHS_1(end) - c_i(end)*V(N_i,j);    
+        
+        V_sudo(2:end-1,j) = H_1 \ RHS_1;
+  %      V(2:end-1,j) = V_sudo(2:end-1,j);
+    end
+  
+     V_sudo(1,2:end-1) = U_half(1,2:end-1);  
+     V_sudo(2:end-1,1) = U_half(2:end-1,1); 
+     V_sudo(N_i,2:end-1) = U_half(N_i,2:end-1);  
+     V_sudo(:,N_j) = U_half(:,N_j);
+     V_sudo(1,1) = U_half(1,1); 
+     V_sudo(end,1) = U_half(end,1); 
+     V_sudo(1,end) = U_half(1,end); 
+     V_sudo(end,end) = U_half(end,end);
+%==========================================================================
+% ADI : step 2
+%==========================================================================
+    d_j = (-sigma2^2 * S2_j.^2)/(2*(delta_S2)^2) + ((r - q2)*S2_j)/(2*delta_S2);
+    e_j = (2/delta_tau + (sigma2^2 * S2_j.^2)/(delta_S2).^2 + r);     
+    f_j = (-sigma2^2 * S2_j.^2)/(2*(delta_S2)^2) - ((r - q2)*S2_j)/(2*delta_S2);
+    H_2 = diag(e_j) + diag(d_j(2:end),-1) + diag(f_j(1:end-1),1); 
+
+    for i = 2 : N_i-1
+        
+        coef_cross_j = rho*sigma1*sigma2*S1(i)*S2_j/(4*delta_S1*delta_S2);
+        RHS_2  =  -coef_cross_j .* V_sudo(i-1,j_vector+1)'...
+                        + coef_cross_j .* V_sudo(i+1,j_vector+1)'...
+                        + ((sigma1^2*S1(i)^2)/(2*(delta_S1)^2) - (r-q1)*S1(i)/(2*delta_S1)) .* V_sudo(i-1,j_vector)' ...
+                        + (2/delta_tau - (sigma1^2*S1(i)^2)/(delta_S1)^2) .* V_sudo(i,j_vector)'...              
+                        + ((sigma1^2*S1(i)^2)/(2*(delta_S1)^2) + (r-q1)*S1(i)/(2*delta_S1)) .* V_sudo(i+1,j_vector)'...
+                        + coef_cross_j .* V_sudo(i-1,j_vector-1)'...
+                        - coef_cross_j .* V_sudo(i+1,j_vector-1)';
+  %   RHS_2  =   ((sigma1^2*S1(i)^2)/(2*(delta_S1)^2) - (r-q1)*S1(i)/(2*delta_S1)) .* V_sudo(i-1,j_vector)' ...
+  %                      + (2/delta_tau - (sigma1^2*S1(i)^2)/(delta_S1)^2) .* V_sudo(i,j_vector)'...              
+  %                      + ((sigma1^1*S1(i)^2)/(2*(delta_S1)^2) + (r-q1)*S1(i)/(2*delta_S1)) .* V_sudo(i+1,j_vector)';
+
+         RHS_2(1) = RHS_2(1) - d_j(1)*V_sudo(i,1);
+         RHS_2(end) = RHS_2(end) - f_j(end)*V_sudo(i,N_j-2);    % Neumann condition  
+                    
+        V_new(i,2:end-1) = H_2 \ RHS_2;
+  %      V_sudo(i,2:end-1) = V_new(i,2:end-1);
+    end
+    figure(3)
+    surf(S2_j,S1_i,V_new(2:end-1,2:end-1));
+
+    %pause;
+    V = V_new;
+    
+ %   V(1,2:end) = 0;
+ %   V(:,1) = exp(-r*tau).*(F.*normcdf(alpha1) - K.*normcdf(alpha2));
+ %   V(N_i,:) = exp(-q1*tau)*S1_max - exp(-r*tau)*(S2 + K); 
+ %   surf(S2,S1,V);
+    
+end
+
+V(1,2:end-1) = U(1,2:end-1);  V(2:end-1,1) = U(2:end-1,1); V(N_i,2:end-1) = U(N_i,2:end-1);  V(:,N_j) = U(:,N_j);
+V(1,1) = U(1,1); V(end,1) = U(end,1); V(1,end) = U(1,end); V(end,end) = U(end,end);
+
+Error = abs(V- U);
+
+toc
+
+
+
+
+
+
