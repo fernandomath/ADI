@@ -1,0 +1,190 @@
+%
+%   Fully Implicit Scheme for 2D Black-Scholes Equation
+%
+clear all;
+format long;
+tic
+%==========================================================================
+% Parameters 
+%==========================================================================
+K = 100;
+S2_max = 3*K;
+S1_max = 3*(S2_max + K);
+sigma1 = 0.2;
+sigma2 = 0.1;
+r = 0.1;
+q1 = 0.01;
+q2 = 0.05;
+rho = 0.8;
+T = 1;
+N_i = 31;
+N_j = 31;
+N_time_step = 31;
+delta_S1 = S1_max / (N_i - 1);
+delta_S2 = S2_max / (N_j - 1);
+delta_tau = T / (N_time_step - 1);
+S1 = (0 : delta_S1 : S1_max)';  
+S2 = (0 : delta_S2 : S2_max)'; 
+i_vector = (2 : N_i-1)';
+j_vector = (2 : N_j-1)';
+S1_i = S1(i_vector);   S2_j = S2(j_vector); 
+%==========================================================================
+% Memory Allocation
+%==========================================================================
+H = zeros((N_i-2)*(N_j-2),(N_i-2)*(N_j-2));
+MAP = zeros(N_i,N_j);  Coef = zeros(N_i,N_j); 
+V = zeros(N_i,N_j);  V_rhs = zeros((N_i-2)*(N_j-2),1);
+%==========================================================================
+% Initial condition  
+%==========================================================================
+for j = 1 : N_j 
+    V(:,j) = max(S1 - S2(j) - K,0);
+end
+
+for j = 2 : N_j-1
+    index = 1 + (j-2)*(N_i - 2) : (j-1)*(N_i - 2);
+    V_rhs(index) = V(2:end-1,j);
+end
+%==========================================================================
+%  Analytical Solution
+%==========================================================================
+    U = zeros(N_i,N_j);
+    for nj = 1 : N_j
+        S2_AS = (nj-1)*delta_S2;
+        sigma = sqrt(sigma1^2 - 2*rho*sigma1*sigma2*(S2_AS./(S2_AS+K*exp(-r*T))) + (S2_AS./(S2_AS+K*exp(-r*T))).^2 * sigma2^2);
+        r_tilda = r*S2_AS./(S2_AS + K*exp(-r*T));
+        q2_tilda = q2*S2_AS./(S2_AS + K*exp(-r*T));
+        d1 = (log(S1./(S2_AS+K*exp(-r*T))) + (r - r_tilda + q2_tilda - q1 + 0.5*sigma.^2)*T)./(sigma*sqrt(T));
+        d2 = d1 - sigma*sqrt(T);
+        U(:,nj) = S1 .* exp(-q1*T).*normcdf(d1) - (K * exp(-r*T)+S2_AS).*exp(-(r - r_tilda - q2_tilda)*T).*normcdf(d2);
+    end
+    
+for t = 1 : N_time_step-1
+       
+%==========================================================================
+% Boundary  condition (time-dependent)
+%==========================================================================
+    tau = (t) * delta_tau;
+% B.C 1: S_1 = 0, 0 < S_2 < S2max
+    V(1,2:end-1) = 0;  
+% B.C 2: S_2 = 0, 0 < S_1 < S1max
+    F = S1(2:end) * exp((r-q1)*tau);
+    alpha1 = (log(F./K) + 0.5 * sigma1^2 * tau)./(sigma1*sqrt(tau));
+    alpha2 = alpha1 - sigma1*sqrt(tau);
+    V(2:end,1) = exp(-r*tau).*(F.*normcdf(alpha1) - K.*normcdf(alpha2)); 
+% B.C 3: S1 = S1max, 0 < S_2 < S2max
+    V(N_i,2:end-1) = exp(-q1*tau)*S1_max - exp(-r*tau)*(S2_j + K);
+% B.C 4: S2 = S2max, 0 < S_1 < S1max
+% Neumann condition, \partial V / \partial S_2 = 0
+% one side approach
+    V(2:end,N_j) = V(2:end,N_j-1);
+% Corner points 
+V(1,1) = 0;  % assume satisfying B.C 1
+%V(N_i,1)   % assume satisfying B.C 2
+V(1,N_j) = 0;  % assume satisfying B.C 1
+%V(N_i,N_j) = V(N_i,N_j-1);  % assume satisfying B.C 4 , one side approach
+%==========================================================================
+% Construct the banded structure matrix (9-diagonal)
+%==========================================================================
+    for j = 2 : N_j - 1 
+        for i = 2 : N_i - 1                 
+           % Define coefficients
+           %    j-1    j      j+1
+           % [ coef1  coef2  coef3]  i-1  
+           % [ coef4  coef5  coef6]  i
+           % [ coef7  coef8  coef9]  i+1           
+           Coef = (rho*sigma1*sigma2*S1(i)*S2(j))/(4*delta_S1*delta_S2);
+
+           coef1 = delta_tau * (-Coef);
+           coef2 = delta_tau * (-sigma1^2*S1(i)^2/(2*(delta_S1)^2) + ((r-q1)*S1(i))/(2*(delta_S1)));
+           coef3 = delta_tau *  Coef;
+           coef4 = delta_tau * (-sigma2^2*S2(j)^2/(2*(delta_S2)^2) + ((r-q2)*S2(j))/(2*(delta_S2)));
+           coef5 = delta_tau * (1/delta_tau + sigma1^2*S1(i)^2/(delta_S1)^2 + sigma2^2*S2(j)^2/(delta_S2)^2 + r);
+           coef6 = delta_tau * (-sigma2^2*S2(j)^2/(2*(delta_S2)^2) - ((r-q2)*S2(j))/(2*(delta_S2)));
+           coef7 = delta_tau * Coef;
+           coef8 = delta_tau * (-sigma1^2*S1(i)^2/(2*(delta_S1)^2) - ((r-q1)*S1(i))/(2*(delta_S1)));
+           coef9 = delta_tau * (-Coef);
+           
+           MAP(i,j) = (i-2) + (j-2)*(N_i - 2) + 1;
+           row = MAP(i,j);
+                                 
+            % define nine points coefficient            
+            col = MAP(i-1,j-1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && i-1 >=2 && j-1 >=2
+                H(row,col) = coef1;
+            end
+            
+            col = MAP(i,j-1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && j-1 >=2
+                H(row,col) = coef4;
+            end
+  
+            col = MAP(i+1,j-1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && j-1 >=2 && i+1 <= N_i-1
+                H(row,col) = coef7;
+            end
+
+            col = MAP(i-1,j);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && i-1 >=2
+                H(row,col) = coef2;
+            end
+ 
+            col = MAP(i,j);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) 
+                H(row,col) = coef5;
+            end
+
+            col = MAP(i+1,j);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && i+1 <= N_i-1
+                H(row,col) = coef8;
+            end
+
+            col = MAP(i-1,j+1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && j+1 <= N_j-1  && i-1 >=2
+                H(row,col) = coef3;
+            end
+        
+            col = MAP(i,j+1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && j+1 <= N_j-1
+                H(row,col) = coef6;
+            end
+        
+            col = MAP(i+1,j+1);
+            if col >= 1 && col <= (N_i-2)*(N_j-2) && i+1 <= N_i-1 && j+1 <= N_j-1
+                H(row,col) = coef9;      
+            end
+            
+            % Define right hand side
+            if i-1 == 1 
+                V_rhs(row) = V_rhs(row) - (coef1 * V(1,j-1) + coef2 * V(1,j) + coef3 * V(1,j+1));
+            end
+            
+            if j-1==1 && i-1 ~= 1 
+                V_rhs(row) = V_rhs(row) - (coef1 * V(i-1,1) + coef4 * V(i,1) + coef7 * V(i+1,1));
+            end
+           
+            if i+1 == N_i && j-1 ~= 1 && j+1 ~= N_j
+                V_rhs(row) = V_rhs(row) - (coef7 * V(N_i,j-1) + coef8 * V(N_i,j) + coef9 * V(N_i,j+1));
+            end
+           
+            if j+1 == N_j && i-1 ~= 1   % Neumann Condition   B.C 4
+             % one side difference approach
+             %   V(i,N_j) = V(i,N_j-1);
+                V_rhs(row) = V_rhs(row) - (coef3 * V(i-1,N_j) + coef6 * V(i,N_j) + coef9 * V(i+1,N_j));
+            end
+       end
+    end
+    Sp_H = sparse(H);
+    V_rhs = Sp_H\(V_rhs);
+  %  V_rhs = pcg(Sp_H,V_rhs);
+end
+
+for j = 2 : N_j-1
+    index = 1 + (j-2)*(N_i - 2) : (j-1)*(N_i - 2);
+    V(2:end-1,j) = V_rhs(index);
+end
+
+Error = abs(V - U);
+toc
+surf(S2_j,S1_i,V(2:end-1,2:end-1));
+%surf(S2,S1,V);
