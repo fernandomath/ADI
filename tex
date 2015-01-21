@@ -1,0 +1,443 @@
+\documentclass[a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+%\usepackage[retainorgcmds]{IEEEtrantools}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\usepackage{amssymb,latexsym,amsthm, mathrsfs}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{exmp}{Example}[section]
+\theoremstyle{definition}
+\newtheorem{defn}{Definition}[section]
+\newtheorem{conj}{Conjecture}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\makeatletter
+
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usepackage{graphics}
+\usepackage{epsfig}
+\usepackage[ruled,vlined]{algorithm2e}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}  % Use Input in the format of Algorithm
+\renewcommand{\algorithmicensure}{\textbf{Output:}} % Use Output in the format of Algorithm
+
+\newcommand{\figcaption}{\def\@captype{figure}\caption}
+\newcommand{\tabcaption}{\def\@captype{table}\caption}
+
+\title{\textbf{Implicit Solver for 2D Black-Scholes Equation}}
+\author{Shih-Hau TAN \\ \small{Mathematical Science Department, University of Greenwich} \\ \small{Email: \texttt{s.tan@gre.ac.uk}}}
+\date{January 5, 2015}
+
+\begin{document}
+\maketitle %prints the title
+%\pagestyle{headings}
+
+\begin{abstract}
+This report is for discussing how to solve 2D Black-Scholes equation with fully implicit scheme and ADI method.  Extension of both methods to solve nonlinear case are also shown here.  We take the numerical results from Vera's report [1] also the paper from Alexander [2] to make a comparison.
+
+\end{abstract}
+
+\section{2D Black-Scholes Equation}
+
+Consider the two-dimensional Black-Scholes equation  
+\begin{equation}
+\frac{\partial U}{\partial \tau} = \frac{1}{2}(\sigma_1^2 S_1^2 \frac{\partial^2 U}{\partial S_1^2} + \sigma_2^2 S_2^2 \frac{\partial^2 U}{\partial S_2^2}) 
++ \rho \sigma_1 \sigma_2 S_1 S_2 \frac{\partial^2 U}{\partial S_1 \partial S_2} 
++ (r-q_1)S_1 \frac{\partial U}{\partial S_1} + (r-q_2)S_2 \frac{\partial U}{\partial S_2} - rU
+\end{equation}
+and we focus the problem on spread option.  The payoff function and boundary conditions are
+\[
+\begin{split}
+U(S_1,S_2,0) = (S_1 - S_2 - E)^+, \; \; \; 0 \leq S_1 \leq S_{1_{max}}, \; 0 \leq S_2 \leq S_{2_{max}} \\
+U(0,S_2,\tau) = 0, \; \; \; 0 \leq S_2 \leq S_{2_{max}} , \;  0<\tau \leq T\\
+U(S_1,0,\tau) = e^{-r\tau}(FN(\alpha_1)-EN(\alpha_2)),  \; \; \; 0 < S_1 < S_{1_{max}}, \;  0<\tau \leq T  \\
+U(S_{1_{max}},S_2,\tau) = e^{-q_1 \tau}S_1 - e^{-r \tau}(S_2 + E), \; \; \; 0 < S_2 \leq S_{2_{max}} , \;  0<\tau \leq T \\
+\frac{\partial U}{\partial S_2}(S_1,S_{2_{max}},\tau) = 0, \; \; \; 0<S_1<S_{1_{max}}, \; 0<\tau \leq T 
+\end{split}
+\]
+where 
+\[
+F = S_1e^{(r-q_1)\tau}, \; \alpha_1 = \frac{1}{\sigma_1 \sqrt{\tau}}(\log \frac{F}{E} + \frac{1}{2}\sigma_1^2 \tau), \; \alpha_2 = \alpha_1 - \sigma_1 \sqrt{\tau}
+\]
+
+Using technique from chapter 2 of [1] to remove the correlation term, we can obtain 
+\begin{equation}
+\frac{\partial W}{\partial \tau} = \frac{\tilde{\rho}}{2}(\frac{\partial^2 W}{\partial x^2} + \frac{\partial^2 W}{\partial y^2} ) + \frac{\tilde{\rho}}{\sigma_1}(r - q_1 - \frac{\sigma_1^2}{2})\frac{\partial W}{\partial x}
++ (\frac{\rho}{\sigma_1}(r - q_1 - \frac{\sigma_1^2}{2}) - \frac{1}{\sigma_2}(r-q_2-\frac{\sigma_2^2}{2}))\frac{\partial W}{\partial y}
+\end{equation}
+
+\section{Fully Implicit Scheme}
+
+The fully implicit scheme for equation (1) is 
+\begin{equation}
+\begin{split}
+\frac{U_{ij}^{n+1}-U_{ij}^n}{\Delta \tau} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+1} -2U_{ij}^{n+1} +U_{i-1,j}^{n+1}}{\Delta S_1^2} 
++ \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n+1} -2U_{ij}^{n+1} +U_{i,j-1}^{n+1}}{\Delta S_2^2}) \\
++ \rho \sigma_1 \sigma_2 S_1(i)S_2(j) \frac{U_{i+1,j+1}^{n+1}+U_{i-1,j-1}^{n+1}-U_{i-1,j+1}^{n+1}-U_{i+1,j-1}^{n+1} }{4\Delta S_1 \Delta S_2}
+\\+(r-q_1)S_1(i)\frac{U_{i+1,j}^{n+1} - U_{i-1,j}^{n+1}}{2\Delta S_1} + (r-q_2)S_2(j)\frac{U_{i,j+1}^{n+1} - U_{i,j-1}^{n+1}}{2\Delta S_2}
+-rU_{ij}^{n+1}
+\end{split}
+\end{equation}
+which we can write it as 
+\begin{equation}
+\begin{split}
+\frac{1}{\tau} U_{ij}^n = 
+C_1 U_{i-1,j-1}^{n+1} + C_2 U_{i-1,j}^{n+1} + C_3 U_{i-1,j+1}^{n+1} +  \\
+C_4 U_{i,j-1}^{n+1} + C_5 U_{ij}^{n+1} + C_6 U_{i,j+1}^{n+1}+\\
+C_7 U_{i+1,j-1}^{n+1} + C_8 U_{i+1,j}^{n+1} + C_9 U_{i+1,j+1}^{n+1}
+\end{split}
+\end{equation}
+where 
+\[
+\begin{split}
+C_1 = C_9 = \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2},  \;
+C_3 = C_7 = \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2}, \; \\
+C_2 = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} + \frac{(r-q_1)S_1(i)}{2\Delta S_1}, \;
+C_8 = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} - \frac{(r-q_1)S_1(i)}{2\Delta S_1}, \;\\
+C_4 = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} + \frac{(r-q_2)S_2(j)}{2\Delta S_2}, \;
+C_6 = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} - \frac{(r-q_2)S_2(j)}{2\Delta S_2}, \;\\
+C_5 = \frac{1}{\Delta \tau} + \frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2} + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} + r \;
+\end{split}
+\]
+and 
+\[
+S_1(i)=i \times \Delta S_1, \; S_2(j)=j\times \Delta S_2
+\]
+then the problem turns to solve the linear system
+\[
+HU^{n+1} = U^n
+\]
+where the construction of matrix $H$ can be done by defining a mapping
+\[
+map(i,j)=(i-2)+(j-2)\times(N_i-2)+1,\: i=2,...,N_i-1;\: j=2,...,N_j-1
+\] 
+and the entries of $H$ is defined as $H(row,column)$.  Here we suppose $N_i$,$N_j$ are the numbers of grid points along $S_1$ and $S_2$ directions include boundary points and when we consider the point at $U_{ij}$, the row will be $row=map(i,j)$ and column will be putting all 8 neighbours and itself to this mapping function, i.e, $map(i-1,j), \: map(i,j-1)$, and so on. 
+\section{ADI Scheme}
+From the numerical experience we can find that solving the linear system with large size of matrix is very expensive.  Therefore we tend to try ADI scheme to modify the problem to solve tri-diagonal systems with smaller size.  We follow the notation as [3] to consider splitting the operator of implicit scheme into two parts which are
+\[
+\frac{U_{ij}^{n+ \frac{1}{2}} - U_{ij}^n}{\Delta \tau/2} = \delta_{ADI}^{S_1}U_{ij}^{n+\frac{1}{2}} \: (*) ,\: \: \: \: 
+\frac{U_{ij}^{n+1} - U_{ij}^{n+ \frac{1}{2}}}{\Delta \tau/2} = \delta_{ADI}^{S_2}U_{ij}^{n+1} \: (**)
+\]
+where the operator $\delta_{ADI}^{S_1}$ means calculating along $S_1$ direction which discretizes equation (1) implicitly for terms $U_{i-1,j},\: U_{ij}, \: U_{i+1,j}$, explicitly for other terms and cross derivative term is treated explicitly.  \\
+
+For (*), we can write it in details as following
+\begin{equation}
+\begin{split}
+\frac{U_{ij}^{n+\frac{1}{2}}-U_{ij}^n}{\Delta \tau /2} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+\frac{1}{2}} -2U_{ij}^{n+\frac{1}{2}} +U_{i-1,j}^{n+\frac{1}{2}}}{\Delta S_1^2} 
++ \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n} -2U_{ij}^{n+\frac{1}{2}} +U_{i,j-1}^{n}}{\Delta S_2^2}) \\
++ \rho \sigma_1 \sigma_2 S_1(i)S_2(j) \frac{U_{i+1,j+1}^{n}+U_{i-1,j-1}^{n}-U_{i-1,j+1}^{n}-U_{i+1,j-1}^{n} }{4\Delta S_1 \Delta S_2}
+\\+(r-q_1)S_1(i)\frac{U_{i+1,j}^{n+\frac{1}{2}} - U_{i-1,j}^{n+\frac{1}{2}}}{2\Delta S_1} + (r-q_2)S_2(j)\frac{U_{i,j+1}^{n} - U_{i,j-1}^{n}}{2\Delta S_2}
+-rU_{ij}^{n+\frac{1}{2}}
+\end{split}
+\end{equation}
+
+and we simplify the equation to be
+\begin{equation}
+a_i U_{i-1,j}^{n+\frac{1}{2}} + b_i U_{ij}^{n+\frac{1}{2}} + c_i U_{i+1,j}^{n+\frac{1}{2}}   
+=
+R U_{ij}^n
+\end{equation}
+where 
+\[
+a_i = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} + \frac{(r-q_1)S_1(i)}{2\Delta S_1}, \;
+b_i = \frac{2}{\Delta \tau} + \frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2} + r + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} , \;
+c_i = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} - \frac{(r-q_1)S_1(i)}{2\Delta S_1} \;
+\]
+and 
+\[
+R = 
+\begin{pmatrix}
+R_{i-1,j+1} & R_{i,j+1} & R_{i+1,j+1}\\
+R_{i-1,j} & R_{ij} & R_{i+1,j} \\
+R_{i-1,j-1} & R_{i,j-1} & R_{i+1,j-1}\\
+\end{pmatrix}
+=
+\begin{pmatrix}
+\frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & \frac{\sigma_2^2 S_2^2(j)}{2\Delta S_2^2}
++ \frac{(r-q_2)S_2(j)}{2\Delta S_2} & \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
+0 & \frac{2}{\Delta \tau}  & 0 \\
+\frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & \frac{\sigma_2^2 S_2^2(j)}{2\Delta S_2^2}
+- \frac{(r-q_2)S_2(j)}{2\Delta S_2} & \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
+\end{pmatrix}
+\]
+which is a simplified notation to consider column to be $i$-direction and row to be $j$-direction to represent the right hand side
+\[
+\begin{split}
+R U_{ij}^n = R_{i-1,j+1} U_{i-1,j+1}^n + R_{i,j+1} U_{i,j+1}^n + R_{i+1,j+1} U_{i+1,j+1}^n \\
+            +R_{i-1,j} U_{i-1,j}^n + R_{ij} U_{ij}^n + R_{i+1,j} U_{i+1,j}^n \\
+            +R_{i-1,j-1} U_{i-1,j-1}^n + R_{i,j-1} U_{i,j-1}^n + R_{i+1,j-1} U_{i+1,j-1}^n 
+\end{split}
+\]
+then equation (6) turns to solve 
+\begin{equation}
+H_1U^{n+\frac{1}{2}}=RU^n
+\end{equation}
+
+Similarly, the operator $\delta_{ADI}^{S_2}$ means calculating along $S_2$ direction which discretizes equation (1) implicitly for terms $U_{i,j-1},\: U_{ij}, \: U_{i,j+1}$, explicitly for other terms and it becomes 
+\begin{equation}
+\begin{split}
+\frac{U_{ij}^{n+1}-U_{ij}^{n+\frac{1}{2}}}{\Delta \tau /2} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+\frac{1}{2}} -2U_{ij}^{n+1} +U_{i-1,j}^{n+\frac{1}{2}}}{\Delta S_1^2} 
++ \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n+1} -2U_{ij}^{n+1} +U_{i,j-1}^{n+1}}{\Delta S_2^2}) \\
++ \rho \sigma_1 \sigma_2 S_1(i)S_2(j) \frac{U_{i+1,j+1}^{n+\frac{1}{2}}+U_{i-1,j-1}^{n+\frac{1}{2}}-U_{i-1,j+1}^{n+\frac{1}{2}}-U_{i+1,j-1}^{n+\frac{1}{2}} }{4\Delta S_1 \Delta S_2}
+\\+(r-q_1)S_1(i)\frac{U_{i+1,j}^{n+\frac{1}{2}} - U_{i-1,j}^{n+\frac{1}{2}}}{2\Delta S_1} + (r-q_2)S_2(j)\frac{U_{i,j+1}^{n+1} - U_{i,j-1}^{n+1}}{2\Delta S_2}
+-rU_{ij}^{n+1}
+\end{split}
+\end{equation}
+and we simplify the equation to be
+\begin{equation}
+d_j U_{i,j-1}^{n+1} + e_j U_{ij}^{n+1} + f_j U_{i,j+1}^{n+1}   
+=
+\tilde{R} U_{ij}^{n+\frac{1}{2}}
+\end{equation}
+where 
+\[
+d_j = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} + \frac{(r-q_2)S_2(j)}{2\Delta S_2}, \;
+e_j = \frac{2}{\Delta \tau} + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} + r +\frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2}  ,\;
+f_j = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} - \frac{(r-q_2)S_2(j)}{2\Delta S_2} \;
+\]
+and 
+\[
+\tilde{R} = 
+\begin{pmatrix}
+\tilde{R}_{i-1,j+1} & \tilde{R}_{i,j+1} & \tilde{R}_{i+1,j+1}\\
+\tilde{R}_{i-1,j} & \tilde{R}_{ij} & \tilde{R}_{i+1,j} \\
+\tilde{R}_{i-1,j-1} & \tilde{R}_{i,j-1} & \tilde{R}_{i+1,j-1}\\
+\end{pmatrix}
+=
+\begin{pmatrix}
+\frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & 0 & \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
+\frac{\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} - \frac{(r-q_1)S_1(i)}{2\Delta S_1} & 
+\frac{2}{\Delta \tau}  & 
+\frac{\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} + \frac{(r-q_1)S_1(i)}{2\Delta S_1} \\
+\frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & 0 & \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
+\end{pmatrix}
+\]
+again, equation (9) turns to solve 
+\begin{equation}
+H_2U^{n+1} = \tilde{R}U^{n+\frac{1}{2}}
+\end{equation}
+
+Therefore we have the following algorithm 
+\begin{algorithm}
+  \SetAlgoLined
+  \caption{ADI}
+  \KwIn{$ U(S_1,S_2,0) $}
+  \KwOut{$U(S_1,S_2,T)$}
+  \For{$t = 0 : \Delta \tau : T$}
+  {  
+    1. Solve equation (7) to obtain $U^{n+\frac{1}{2}}$ \;
+    2. Solve equation (10) to obtain $U^{n+1}$\;
+  }
+  
+\end{algorithm}
+
+
+
+\section{Nonlinear Volatility}
+In fact, for equation (1), $\sigma_1$ and $\sigma_2$ can be a function of $U$ and the equation becomes nonlinear partial differential equation.  Two approaches of using Newton's method to solve 1D Black-Scholes equation can be checked in [4], and in this chapter we aim to extend the results with fully implicit scheme and ADI scheme to solve 2D case.\\
+
+\subsection{Newton's Method First Approach (NM1)}
+To solve it with fully implicit scheme, the first approach is to consider
+\begin{equation}
+G(U^{n+1}) = H(U^{n+1})U^{n+1} - U^n = 0
+\end{equation}
+where the construction of $H$ can be checked from equation (4).  Then we have to calculate the Jacobian matrix of $G$ in order to do updating.  \\
+
+\begin{algorithm}
+  \SetAlgoLined
+  \caption{NM1 with fully implicit scheme}
+  \KwIn{$ U(S_1,S_2,0), U_{guess} $}
+  \KwOut{$U(S_1,S_2,T)$}
+  \For{$timestep = 1 : N_{Newton}$}
+  {
+  \For{$t = 0 : \Delta \tau : T$}
+  {  
+    1. Take $U^{n+1} = U_{guess}$ in equation (11)  \;
+    2. If $|G(U_{guess})| < tol$, break \;
+    3. Else $U_{guess} = U_{guess} - (Jacobian(G))^{-1}U_{guess}$ and go back to 1. 
+  }
+  }
+\end{algorithm}
+
+The same idea can be implemented with ADI scheme by considering 
+\begin{equation}
+G_1(U^{n+\frac{1}{2}})=H_1(U^{n+\frac{1}{2}})U^{n+\frac{1}{2}}-RU^n = 0
+\end{equation}
+and 
+\begin{equation}
+G_2(U^{n+1})=H_2(U^{n+1})U^{n+1}-\tilde{R}U^{n+\frac{1}{2}} = 0
+\end{equation}
+where $H_1$ and $H_2$ are same definitions from equation (7) and (10).
+
+\begin{algorithm}
+  \SetAlgoLined
+  \caption{NM1 with ADI scheme}
+  \KwIn{$ U(S_1,S_2,0), U_{guess_1}, U_{guess_2} $}
+  \KwOut{$U(S_1,S_2,T)$}
+  \For{$timestep = 1 : N_{Newton}$}
+  {
+  \For{$t = 0 : \Delta \tau : T$}
+  {  
+    1. Take $U^{n+\frac{1}{2}} = U_{guess_1}$ in equation (12)  \;
+    2. If $|G_1(U_{guess_1})| < tol, \; U^{n+\frac{1}{2}} = U_{guess_1}$, and go to 4. \;
+    3. Else $U_{guess_1} = U_{guess_1} - (Jacobian(G_1))^{-1}U_{guess_1}$ , and go back to 1. \;
+    4. Take $U^{n+1} = U_{guess_2}$ in equation (13) \;
+    5. If $|G_2(U_{guess_2})| < tol$, break \;
+    6. Else $U_{guess_2} = U_{guess_2} -  (Jacobian(G_2))^{-1}U_{guess_2}$ , and go back to 4. 
+  }
+  }
+\end{algorithm}
+
+
+\subsection{Newton's Method Second Approach (NM2)}
+To use the second approach, first we consider 
+\begin{equation}
+\begin{split}
+F(U_{\tau},U_{S_1},U_{S_2},U_{S_1S_1},U_{S_2S_2},U_{S_1S_2},U) 
+= \frac{\partial U}{\partial \tau} - \frac{1}{2}(\sigma_1^2 S_1^2 \frac{\partial^2 U}{\partial S_1^2} + \sigma_2^2 S_2^2 \frac{\partial^2 U}{\partial S_2^2}) 
+- \rho \sigma_1 \sigma_2 S_1 S_2 \frac{\partial^2 U}{\partial S_1 \partial S_2}\\ 
+- (r-q_1)S_1 \frac{\partial U}{\partial S_1} - (r-q_2)S_2 \frac{\partial U}{\partial S_2} + rU
+\end{split}
+\end{equation}
+and assume $(U_{\tau}^*,U_{S_1}^*,U_{S_2}^*,U_{S_1S_1}^*,U_{S_2S_2}^*,U_{S_1S_2}^*,U^*)$ is an approximate solution, then doing the linearization on it for equation (14), we obtain  
+\begin{equation}
+\begin{split}
+F(U_{\tau}^*+e_{\tau},U_{S_1}^*+e_{S_1},U_{S_2}^*+e_{S_2},U_{S_1S_1}^*+e_{S_1S_1},U_{S_2S_2}^*+e_{S_2S_2},U_{S_1S_2}^*+e_{S_1S_2},U^*+e) \\
+=F(U_{\tau}^*,U_{S_1}^*,U_{S_2}^*,U_{S_1S_1}^*,U_{S_2S_2}^*,U_{S_1S_2}^*,U^*)
++(\frac{\partial F}{\partial U_{\tau}^*}e_{\tau} + \frac{\partial F}{\partial U_{S_1}^*}e_{S_1}
++\frac{\partial F}{\partial U_{S_2}^*}e_{S_2}+\frac{\partial F}{\partial U_{S_1S_1}^*}e_{S_1S_1}\\
++\frac{\partial F}{\partial U_{S_2S_2}^*}e_{S_2S_2}+\frac{\partial F}{\partial U_{S_1S_2}^*}e_{S_1S_2}
++\frac{\partial F}{\partial U^*}e ) \approx 0
+\end{split}
+\end{equation}
+
+
+To solve the above equation, we must calculate all the coefficients like $\frac{\partial F}{\partial U_{\tau}^*}$ and then get a linear PDE of correction term $e$, and we can choose to solve it by fully implicit scheme or ADI scheme.
+
+\subsubsection{Fully Implicit Scheme}
+A fully implicit scheme for equation (15) is 
+\[
+\begin{split}
+\frac{\partial F}{\partial U_{\tau}^*}\frac{e_{ij}^{n+1}-e_{ij}^n}{\Delta \tau} 
++ \frac{\partial F}{\partial U_{S_1}^*}\frac{e_{i+1,j}^{n+1}-e_{i-1,j}^{n+1}}{2\Delta S_1}
++ \frac{\partial F}{\partial U_{S_2}^*}\frac{e_{i,j+1}^{n+1}-e_{i,j-1}^{n+1}}{2\Delta S_2}\\
++ \frac{\partial F}{\partial U_{S_1S_1}^*}\frac{e_{i+1,j}^{n+1}-2e_{ij}^{n+1}+e_{i-1,j}^{n+1}}{\Delta S_1^2}
++ \frac{\partial F}{\partial U_{S_2S_2}^*}\frac{e_{i,j+1}^{n+1}-2e_{ij}^{n+1}+e_{i,j-1}^{n+1}}{\Delta S_2^2}\\
++ \frac{\partial F}{\partial U_{S_1S_2}^*}\frac{e_{i+1,j+1}^{n+1}+e_{i-1,j-1}^{n+1}-e_{i-1,j+1}^{n+1}-e_{i+1,j-1}^{n+1}}{4\Delta S_1\Delta S_2}
++\frac{\partial F}{\partial U^*}e_{ij}^{n+1}
+= -F
+\end{split}
+\]
+which can be written as
+\begin{equation}
+\begin{split}
+\frac{\partial F}{\partial U_{\tau}^*}\frac{1}{\tau} e_{ij}^n -F= 
+\alpha_1 e_{i-1,j-1}^{n+1} + \alpha_2 e_{i-1,j}^{n+1} + \alpha_3 e_{i-1,j+1}^{n+1} +  \\
+\alpha_4 e_{i,j-1}^{n+1} + \alpha_5 e_{ij}^{n+1} + \alpha_6 e_{i,j+1}^{n+1}+\\
+\alpha_7 e_{i+1,j-1}^{n+1} + \alpha_8 e_{i+1,j}^{n+1} + \alpha_9 e_{i+1,j+1}^{n+1}
+\end{split}
+\end{equation}
+where 
+\[
+\begin{split}
+\alpha_1 = \alpha_9 = \frac{\frac{\partial F}{\partial U_{S_1S_2}^*}}{4 \Delta S_1 \Delta S_2},  \;
+\alpha_3 = \alpha_7 = \frac{-\frac{\partial F}{\partial U_{S_1S_2}^*}}{4 \Delta S_1 \Delta S_2}, \; \\
+\alpha_2 = \frac{-\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}, \;
+\alpha_8 = \frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}, \;\\
+\alpha_4 = \frac{-\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2},
+\alpha_6 = \frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}, \;\\
+\alpha_5 =  \frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+-2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}\;
+\end{split}
+\]
+then again we obtain the linear system to be solved
+\[
+\tilde{H}e^{n+1} = \frac{\partial F}{\partial U_{\tau}^*}\frac{1}{\tau} e^n -F
+\]
+where the construction of $\tilde{H}$ is same as describe in chapter 2.
+
+\subsubsection{ADI scheme}
+Applying the same idea in chapter 3 to equation (15), we have 
+\[
+\frac{e_{ij}^{n+ \frac{1}{2}} - e_{ij}^n}{\Delta \tau/2} = \delta_{ADI}^{S_1}e_{ij}^{n+\frac{1}{2}} \: (***) ,\: \: \: \: 
+\frac{e_{ij}^{n+1} - e_{ij}^{n+ \frac{1}{2}}}{\Delta \tau/2} = \delta_{ADI}^{S_2}e_{ij}^{n+1} \: (****)
+\]
+
+For (***) we get the equation
+\begin{equation}
+\tilde{a_i}e_{i+1,j}^{n+\frac{1}{2}} + \tilde{b_i}e_{ij}^{n+\frac{1}{2}} + \tilde{c_i}e_{i+1,j}^{n+\frac{1}{2}}=R^e e_{ij}^n - F
+\end{equation}
+where
+\[
+\tilde{a_i} = -\frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}, \;
+\tilde{b_i} =2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+-2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}, \;
+\tilde{c_i} = \frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}
+\]
+and 
+\[
+R^e = 
+\begin{pmatrix}
+R_{i-1,j+1}^e & R_{i,j+1}^e & R_{i+1,j+1}^e\\
+R_{i-1,j}^e & R_{ij}^e & R_{i+1,j}^e \\
+R_{i-1,j-1}^e & R_{i,j-1}^e & R_{i+1,j-1}^e\\
+\end{pmatrix}
+=
+\begin{pmatrix}
+-\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} & \frac{\frac{\partial F}{\partial V_{S_2}^*}}{2\Delta S_2} +  \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
+& \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} \\
+0 & 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau}  & 0 \\
+\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}& -\frac{\frac{\partial F}{\partial V_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
+& -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}\\
+\end{pmatrix}
+\]
+then equation (17) turns to solve 
+\begin{equation}
+\tilde{H_1}e^{n+\frac{1}{2}}=R^e e^n -F
+\end{equation}
+
+Similarly for (****) we have 
+\begin{equation}
+\tilde{d_i}e_{i,j-1}^{n+1} + \tilde{e_i}e_{ij}^{n+1} + \tilde{f_i}e_{i+1,j}^{n+1}=\tilde{R}^e e_{ij}^{n+\frac{1}{2}} - F
+\end{equation}
+where
+\[
+\tilde{d_j} = -\frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}, \;
+\tilde{e_j} =2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+-2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}, \;
+\tilde{f_j} = \frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
+\]
+and 
+\[
+\tilde{R}^e = 
+\begin{pmatrix}
+\tilde{R}_{i-1,j+1}^e & \tilde{R}_{i,j+1}^e & \tilde{R}_{i+1,j+1}^e\\
+\tilde{R}_{i-1,j}^e & \tilde{R}_{ij}^e & \tilde{R}_{i+1,j}^e \\
+\tilde{R}_{i-1,j-1}^e & \tilde{R}_{i,j-1}^e & \tilde{R}_{i+1,j-1}^e\\
+\end{pmatrix}
+=
+\begin{pmatrix}
+-\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} & 0 & \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} \\
+-\frac{\frac{\partial F}{\partial V_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+& 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau}  
+& \frac{\frac{\partial F}{\partial V_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}  \\
+\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}& 0& -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}\\
+\end{pmatrix}
+\]
+then equation (19) turns to solve 
+\begin{equation}
+\tilde{H_2}e^{n+1}=\tilde{R}^e e^{n+\frac{1}{2}} -F
+\end{equation}
+
+\section{Numerical Result}
+To be updated.  For nonlinear case, we consider $\sigma_1 = 1 - \sin(U)$ and $\sigma_2 = 1 - \cos(U)$ to be an initial test.
+\begin{thebibliography}{1}
+\bibitem{AG} Vera's report.
+\bibitem{AG} C. Alexander, A. Venkatramanan.  Analytic Approximation for Spread Options.  ICMA Centre Discussion Papers in Finance DP2007-11, 2007.
+\bibitem{AG} Darae Jeong, Junseok Kim.  A comparison study of ADI and operator splitting methods on option pricing models.  Journal of Computational and Applied Mathematics 247(2013) 162-171.
+\bibitem{AG} Shih-Hau TAN.  Nonlinear Option Pricing: Review and Newton-like Method.  Working report, 2014.
+
+
+\end{thebibliography}
+\end{document}
