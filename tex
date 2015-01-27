@@ -1,6 +1,7 @@
 \documentclass[a4paper]{article}
 \usepackage{amsmath}
-cmds]{IEEEtrantools}
+\usepackage{amsfonts}
+%\usepackage[retainorgcmds]{IEEEtrantools}
 \usepackage{graphicx}
 \usepackage{xcolor}
 
@@ -33,7 +34,7 @@ cmds]{IEEEtrantools}
 %\pagestyle{headings}
 
 \begin{abstract}
-This report is for discussing how to solve 2D Black-Scholes equation with fully implicit scheme and ADI method.  Extension of both methods to solve nonlinear case are also shown here.  We take the numerical results from Vera's report [1] also the paper from Alexander [2] to make a comparison.
+This report is for discussing how to solve 2D Black-Scholes equation with fully implicit scheme and ADI method. A comparison with Vera's report [1] which uses explicit scheme and Kirk's approximation from [2] are shown here.  Also, we solve the equation after removing cross derivative term by using technique from [1] and to compare with answers without removing it.  
 
 \end{abstract}
 
@@ -50,9 +51,9 @@ and we focus the problem on spread option.  The payoff function and boundary con
 \begin{split}
 U(S_1,S_2,0) = (S_1 - S_2 - E)^+, \; \; \; 0 \leq S_1 \leq S_{1_{max}}, \; 0 \leq S_2 \leq S_{2_{max}} \\
 U(0,S_2,\tau) = 0, \; \; \; 0 \leq S_2 \leq S_{2_{max}} , \;  0<\tau \leq T\\
-U(S_1,0,\tau) = e^{-r\tau}(FN(\alpha_1)-EN(\alpha_2)),  \; \; \; 0 < S_1 < S_{1_{max}}, \;  0<\tau \leq T  \\
-U(S_{1_{max}},S_2,\tau) = e^{-q_1 \tau}S_1 - e^{-r \tau}(S_2 + E), \; \; \; 0 < S_2 \leq S_{2_{max}} , \;  0<\tau \leq T \\
-\frac{\partial U}{\partial S_2}(S_1,S_{2_{max}},\tau) = 0, \; \; \; 0<S_1<S_{1_{max}}, \; 0<\tau \leq T 
+U(S_1,0,\tau) = e^{-r\tau}(FN(\alpha_1)-EN(\alpha_2)),  \; \; \; 0 < S_1 \leq S_{1_{max}}, \;  0<\tau \leq T  \\
+U(S_{1_{max}},S_2,\tau) = e^{-q_1 \tau}S_1 - e^{-r \tau}(S_2 + E), \; \; \; 0 < S_2 < S_{2_{max}} , \;  0<\tau \leq T \\
+\frac{\partial U}{\partial S_2}(S_1,S_{2_{max}},\tau) = 0, \; \; \; 0<S_1 \leq S_{1_{max}}, \; 0<\tau \leq T 
 \end{split}
 \]
 where 
@@ -60,11 +61,7 @@ where
 F = S_1e^{(r-q_1)\tau}, \; \alpha_1 = \frac{1}{\sigma_1 \sqrt{\tau}}(\log \frac{F}{E} + \frac{1}{2}\sigma_1^2 \tau), \; \alpha_2 = \alpha_1 - \sigma_1 \sqrt{\tau}
 \]
 
-Using technique from chapter 2 of [1] to remove the correlation term, we can obtain 
-\begin{equation}
-\frac{\partial W}{\partial \tau} = \frac{\tilde{\rho}}{2}(\frac{\partial^2 W}{\partial x^2} + \frac{\partial^2 W}{\partial y^2} ) + \frac{\tilde{\rho}}{\sigma_1}(r - q_1 - \frac{\sigma_1^2}{2})\frac{\partial W}{\partial x}
-+ (\frac{\rho}{\sigma_1}(r - q_1 - \frac{\sigma_1^2}{2}) - \frac{1}{\sigma_2}(r-q_2-\frac{\sigma_2^2}{2}))\frac{\partial W}{\partial y}
-\end{equation}
+
 
 \section{Fully Implicit Scheme}
 
@@ -81,7 +78,7 @@ The fully implicit scheme for equation (1) is
 which we can write it as 
 \begin{equation}
 \begin{split}
-\frac{1}{\tau} U_{ij}^n = 
+\frac{1}{\Delta \tau} U_{ij}^n = 
 C_1 U_{i-1,j-1}^{n+1} + C_2 U_{i-1,j}^{n+1} + C_3 U_{i-1,j+1}^{n+1} +  \\
 C_4 U_{i,j-1}^{n+1} + C_5 U_{ij}^{n+1} + C_6 U_{i,j+1}^{n+1}+\\
 C_7 U_{i+1,j-1}^{n+1} + C_8 U_{i+1,j}^{n+1} + C_9 U_{i+1,j+1}^{n+1}
@@ -113,18 +110,18 @@ map(i,j)=(i-2)+(j-2)\times(N_i-2)+1,\: i=2,...,N_i-1;\: j=2,...,N_j-1
 \] 
 and the entries of $H$ is defined as $H(row,column)$.  Here we suppose $N_i$,$N_j$ are the numbers of grid points along $S_1$ and $S_2$ directions include boundary points and when we consider the point at $U_{ij}$, the row will be $row=map(i,j)$ and column will be putting all 8 neighbours and itself to this mapping function, i.e, $map(i-1,j), \: map(i,j-1)$, and so on. 
 \section{ADI Scheme}
-From the numerical experience we can find that solving the linear system with large size of matrix is very expensive.  Therefore we tend to try ADI scheme to modify the problem to solve tri-diagonal systems with smaller size.  We follow the notation as [3] to consider splitting the operator of implicit scheme into two parts which are
+From the numerical experience we can find that solving the linear system with large size of matrix is very expensive.  Therefore we tend to try ADI scheme in Peaceman-Rachford sense to modify the problem to solve tri-diagonal systems with smaller size.  We first consider splitting the operator of original fully implicit scheme into two parts which are
 \[
 \frac{U_{ij}^{n+ \frac{1}{2}} - U_{ij}^n}{\Delta \tau/2} = \delta_{ADI}^{S_1}U_{ij}^{n+\frac{1}{2}} \: (*) ,\: \: \: \: 
 \frac{U_{ij}^{n+1} - U_{ij}^{n+ \frac{1}{2}}}{\Delta \tau/2} = \delta_{ADI}^{S_2}U_{ij}^{n+1} \: (**)
 \]
-where the operator $\delta_{ADI}^{S_1}$ means calculating along $S_1$ direction which discretizes equation (1) implicitly for terms $U_{i-1,j},\: U_{ij}, \: U_{i+1,j}$, explicitly for other terms and cross derivative term is treated explicitly.  \\
+where the operator $\delta_{ADI}^{S_1}$ means calculating along $S_1$ direction which discretizes equation (1) implicitly for terms $U_{i-1,j},\: U_{ij}, \: U_{i+1,j}$, and explicitly for other terms include cross derivative term.  \\
 
 For (*), we can write it in details as following
 \begin{equation}
 \begin{split}
 \frac{U_{ij}^{n+\frac{1}{2}}-U_{ij}^n}{\Delta \tau /2} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+\frac{1}{2}} -2U_{ij}^{n+\frac{1}{2}} +U_{i-1,j}^{n+\frac{1}{2}}}{\Delta S_1^2} 
-+ \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n} -2U_{ij}^{n+\frac{1}{2}} +U_{i,j-1}^{n}}{\Delta S_2^2}) \\
++ \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n} -2U_{ij}^{n} +U_{i,j-1}^{n}}{\Delta S_2^2}) \\
 + \rho \sigma_1 \sigma_2 S_1(i)S_2(j) \frac{U_{i+1,j+1}^{n}+U_{i-1,j-1}^{n}-U_{i-1,j+1}^{n}-U_{i+1,j-1}^{n} }{4\Delta S_1 \Delta S_2}
 \\+(r-q_1)S_1(i)\frac{U_{i+1,j}^{n+\frac{1}{2}} - U_{i-1,j}^{n+\frac{1}{2}}}{2\Delta S_1} + (r-q_2)S_2(j)\frac{U_{i,j+1}^{n} - U_{i,j-1}^{n}}{2\Delta S_2}
 -rU_{ij}^{n+\frac{1}{2}}
@@ -140,7 +137,7 @@ R U_{ij}^n
 where 
 \[
 a_i = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} + \frac{(r-q_1)S_1(i)}{2\Delta S_1}, \;
-b_i = \frac{2}{\Delta \tau} + \frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2} + r + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} , \;
+b_i = \frac{2}{\Delta \tau} + \frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2} + r , \;
 c_i = \frac{-\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} - \frac{(r-q_1)S_1(i)}{2\Delta S_1} \;
 \]
 and 
@@ -155,7 +152,7 @@ R_{i-1,j-1} & R_{i,j-1} & R_{i+1,j-1}\\
 \begin{pmatrix}
 \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & \frac{\sigma_2^2 S_2^2(j)}{2\Delta S_2^2}
 + \frac{(r-q_2)S_2(j)}{2\Delta S_2} & \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
-0 & \frac{2}{\Delta \tau}  & 0 \\
+0 & \frac{2}{\Delta \tau} +  \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2}  & 0 \\
 \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & \frac{\sigma_2^2 S_2^2(j)}{2\Delta S_2^2}
 - \frac{(r-q_2)S_2(j)}{2\Delta S_2} & \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
 \end{pmatrix}
@@ -176,7 +173,7 @@ H_1U^{n+\frac{1}{2}}=RU^n
 Similarly, the operator $\delta_{ADI}^{S_2}$ means calculating along $S_2$ direction which discretizes equation (1) implicitly for terms $U_{i,j-1},\: U_{ij}, \: U_{i,j+1}$, explicitly for other terms and it becomes 
 \begin{equation}
 \begin{split}
-\frac{U_{ij}^{n+1}-U_{ij}^{n+\frac{1}{2}}}{\Delta \tau /2} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+\frac{1}{2}} -2U_{ij}^{n+1} +U_{i-1,j}^{n+\frac{1}{2}}}{\Delta S_1^2} 
+\frac{U_{ij}^{n+1}-U_{ij}^{n+\frac{1}{2}}}{\Delta \tau /2} = \frac{1}{2}(\sigma_1^2 S_1^2(i) \frac{U_{i+1,j}^{n+\frac{1}{2}} -2U_{ij}^{n+\frac{1}{2}} +U_{i-1,j}^{n+\frac{1}{2}}}{\Delta S_1^2} 
 + \sigma_2^2 S_2^2(j) \frac{U_{i,j+1}^{n+1} -2U_{ij}^{n+1} +U_{i,j-1}^{n+1}}{\Delta S_2^2}) \\
 + \rho \sigma_1 \sigma_2 S_1(i)S_2(j) \frac{U_{i+1,j+1}^{n+\frac{1}{2}}+U_{i-1,j-1}^{n+\frac{1}{2}}-U_{i-1,j+1}^{n+\frac{1}{2}}-U_{i+1,j-1}^{n+\frac{1}{2}} }{4\Delta S_1 \Delta S_2}
 \\+(r-q_1)S_1(i)\frac{U_{i+1,j}^{n+\frac{1}{2}} - U_{i-1,j}^{n+\frac{1}{2}}}{2\Delta S_1} + (r-q_2)S_2(j)\frac{U_{i,j+1}^{n+1} - U_{i,j-1}^{n+1}}{2\Delta S_2}
@@ -192,7 +189,7 @@ d_j U_{i,j-1}^{n+1} + e_j U_{ij}^{n+1} + f_j U_{i,j+1}^{n+1}
 where 
 \[
 d_j = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} + \frac{(r-q_2)S_2(j)}{2\Delta S_2}, \;
-e_j = \frac{2}{\Delta \tau} + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} + r +\frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2}  ,\;
+e_j = \frac{2}{\Delta \tau} + \frac{\sigma_2^2 S_2^2(j)}{\Delta S_2^2} + r   ,\;
 f_j = \frac{-\sigma_2^2 S_2^2(j)}{2\Delta S_2^2} - \frac{(r-q_2)S_2(j)}{2\Delta S_2} \;
 \]
 and 
@@ -207,7 +204,7 @@ and
 \begin{pmatrix}
 \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & 0 & \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
 \frac{\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} - \frac{(r-q_1)S_1(i)}{2\Delta S_1} & 
-\frac{2}{\Delta \tau}  & 
+\frac{2}{\Delta \tau} +\frac{\sigma_1^2 S_1^2(i)}{\Delta S_1^2}  & 
 \frac{\sigma_1^2 S_1^2(i)}{2\Delta S_1^2} + \frac{(r-q_1)S_1(i)}{2\Delta S_1} \\
 \frac{\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} & 0 & \frac{-\rho \sigma_1 \sigma_2 S_1(i) S_2(j)}{4 \Delta S_1 \Delta S_2} \\
 \end{pmatrix}
@@ -231,7 +228,23 @@ Therefore we have the following algorithm
   
 \end{algorithm}
 
+\section{Numerical Experiment}
 
+We give some numerical comparison for fully implicit scheme, ADI scheme and explicit scheme to solve equation (1).  We compare a reference solution which uses Kirk's approximation from [2].
+
+
+\subsection{Removing Cross Derivative Term}
+Techniques for removing cross derivative term of equation (1) can be checked in [1].  After removing it, we obtain the new equation 
+\begin{equation}
+\frac{\partial W}{\partial \tau} = \frac{\tilde{\rho}}{2}(\frac{\partial^2 W}{\partial x^2} + \frac{\partial^2 W}{\partial y^2})
++ \frac{\tilde{\rho}}{\sigma_1}(r-q_1-\frac{\sigma_1^2}{2})\frac{\partial W}{\partial x} 
++ (\frac{\rho}{\sigma_1}(r-q_1-\frac{\sigma_1^2}{2})-\frac{1}{\sigma_2}(r-q_2-\frac{\sigma_2^2}{2}))\frac{\partial W}{\partial y}
+\end{equation}
+where $\tilde{\rho}=\sqrt{1-\rho^2}$, $x = \frac{\tilde{\rho}}{\sigma_1}\log(S_1), y = \frac{\rho}{\sigma_1}\log(S_1)-\frac{1}{\sigma_2}\log(S_2)$ \\
+and $W(x,y,\tau) = V(S_1,S_2,\tau)$ where $V = e^{r \tau}U$.\\
+
+
+\subsection{•}
 
 \section{Nonlinear Volatility}
 In fact, for equation (1), $\sigma_1$ and $\sigma_2$ can be a function of $U$ and the equation becomes nonlinear partial differential equation.  Two approaches of using Newton's method to solve 1D Black-Scholes equation can be checked in [4], and in this chapter we aim to extend the results with fully implicit scheme and ADI scheme to solve 2D case.\\
@@ -299,7 +312,7 @@ F(U_{\tau},U_{S_1},U_{S_2},U_{S_1S_1},U_{S_2S_2},U_{S_1S_2},U)
 - (r-q_1)S_1 \frac{\partial U}{\partial S_1} - (r-q_2)S_2 \frac{\partial U}{\partial S_2} + rU
 \end{split}
 \end{equation}
-and assume $(U_{\tau}^*,U_{S_1}^*,U_{S_2}^*,U_{S_1S_1}^*,U_{S_2S_2}^*,U_{S_1S_2}^*,U^*)$ is an approximate solution, then doing the linearization on it for equation (14), we obtain  
+and assume $(U_{\tau}^*,U_{S_1}^*,U_{S_2}^*,U_{S_1S_1}^*,U_{S_2S_2}^*,U_{S_1S_2}^*,U^*)$ is an approximate solution, then doing the linearisation on it for equation (14), we obtain  
 \begin{equation}
 \begin{split}
 F(U_{\tau}^*+e_{\tau},U_{S_1}^*+e_{S_1},U_{S_2}^*+e_{S_2},U_{S_1S_1}^*+e_{S_1S_1},U_{S_2S_2}^*+e_{S_2S_2},U_{S_1S_2}^*+e_{S_1S_2},U^*+e) \\
@@ -331,7 +344,7 @@ A fully implicit scheme for equation (15) is
 which can be written as
 \begin{equation}
 \begin{split}
-\frac{\partial F}{\partial U_{\tau}^*}\frac{1}{\tau} e_{ij}^n -F= 
+\frac{\partial F}{\partial U_{\tau}^*}\frac{1}{\Delta \tau} e_{ij}^n -F= 
 \alpha_1 e_{i-1,j-1}^{n+1} + \alpha_2 e_{i-1,j}^{n+1} + \alpha_3 e_{i-1,j+1}^{n+1} +  \\
 \alpha_4 e_{i,j-1}^{n+1} + \alpha_5 e_{ij}^{n+1} + \alpha_6 e_{i,j+1}^{n+1}+\\
 \alpha_7 e_{i+1,j-1}^{n+1} + \alpha_8 e_{i+1,j}^{n+1} + \alpha_9 e_{i+1,j+1}^{n+1}
@@ -346,7 +359,7 @@ where
 \alpha_8 = \frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}, \;\\
 \alpha_4 = \frac{-\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2},
 \alpha_6 = \frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}, \;\\
-\alpha_5 =  \frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+\alpha_5 =  \frac{\frac{\partial F}{\partial U_{\tau}^*}}{\Delta \tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
 -2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}\;
 \end{split}
 \]
@@ -360,18 +373,18 @@ where the construction of $\tilde{H}$ is same as describe in chapter 2.
 Applying the same idea in chapter 3 to equation (15), we have 
 \[
 \frac{e_{ij}^{n+ \frac{1}{2}} - e_{ij}^n}{\Delta \tau/2} = \delta_{ADI}^{S_1}e_{ij}^{n+\frac{1}{2}} \: (***) ,\: \: \: \: 
-\frac{e_{ij}^{n+1} - e_{ij}^{n+ \frac{1}{2}}}{\Delta \tau/2} = \delta_{ADI}^{S_2}e_{ij}^{n+1} \: (****)
+\frac{e_{ij}^{n-1} - e_{ij}^{n+ \frac{1}{2}}}{\Delta \tau/2} = \delta_{ADI}^{S_2}e_{ij}^{n+1} \: (****)
 \]
 
 For (***) we get the equation
 \begin{equation}
-\tilde{a_i}e_{i+1,j}^{n+\frac{1}{2}} + \tilde{b_i}e_{ij}^{n+\frac{1}{2}} + \tilde{c_i}e_{i+1,j}^{n+\frac{1}{2}}=R^e e_{ij}^n - F
+\tilde{a_i}e_{i-1,j}^{n+\frac{1}{2}} + \tilde{b_i}e_{ij}^{n+\frac{1}{2}} + \tilde{c_i}e_{i+1,j}^{n+\frac{1}{2}}=R^e e_{ij}^n - F
 \end{equation}
 where
 \[
 \tilde{a_i} = -\frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}, \;
 \tilde{b_i} =2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
--2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}, \;
+ + \frac{\partial F}{\partial U^*}, \;
 \tilde{c_i} = \frac{\frac{\partial F}{\partial U_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}
 \]
 and 
@@ -386,7 +399,7 @@ R_{i-1,j-1}^e & R_{i,j-1}^e & R_{i+1,j-1}^e\\
 \begin{pmatrix}
 -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} & \frac{\frac{\partial F}{\partial V_{S_2}^*}}{2\Delta S_2} +  \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
 & \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} \\
-0 & 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau}  & 0 \\
+0 & 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\Delta tau} -2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} & 0 \\
 \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}& -\frac{\frac{\partial F}{\partial V_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
 & -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}\\
 \end{pmatrix}
@@ -398,12 +411,12 @@ then equation (17) turns to solve
 
 Similarly for (****) we have 
 \begin{equation}
-\tilde{d_i}e_{i,j-1}^{n+1} + \tilde{e_i}e_{ij}^{n+1} + \tilde{f_i}e_{i+1,j}^{n+1}=\tilde{R}^e e_{ij}^{n+\frac{1}{2}} - F
+\tilde{d_j}e_{i,j-1}^{n+1} + \tilde{e_j}e_{ij}^{n+1} + \tilde{f_j}e_{i,j+1}^{n+1}=\tilde{R}^e e_{ij}^{n+\frac{1}{2}} - F
 \end{equation}
 where
 \[
 \tilde{d_j} = -\frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}, \;
-\tilde{e_j} =2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
+\tilde{e_j} =2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau} 
 -2\frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2} + \frac{\partial F}{\partial U^*}, \;
 \tilde{f_j} = \frac{\frac{\partial F}{\partial U_{S_2}^*}}{2\Delta S_2} + \frac{\frac{\partial F}{\partial U_{S_2S_2}^*}}{\Delta S_2^2}
 \]
@@ -419,7 +432,7 @@ and
 \begin{pmatrix}
 -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} & 0 & \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2} \\
 -\frac{\frac{\partial F}{\partial V_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2} 
-& 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\tau}  
+& 2\frac{\frac{\partial F}{\partial U_{\tau}^*}}{\Delta \tau} -2\frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}  
 & \frac{\frac{\partial F}{\partial V_{S_1}^*}}{2\Delta S_1} + \frac{\frac{\partial F}{\partial U_{S_1S_1}^*}}{\Delta S_1^2}  \\
 \frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}& 0& -\frac{\frac{\partial F}{\partial V_{S_1S_1}^*}}{4\Delta S_1 \Delta S_2}\\
 \end{pmatrix}
@@ -434,7 +447,6 @@ To be updated.  For nonlinear case, we consider $\sigma_1 = 1 - \sin(U)$ and $\s
 \begin{thebibliography}{1}
 \bibitem{AG} Vera's report.
 \bibitem{AG} C. Alexander, A. Venkatramanan.  Analytic Approximation for Spread Options.  ICMA Centre Discussion Papers in Finance DP2007-11, 2007.
-\bibitem{AG} Darae Jeong, Junseok Kim.  A comparison study of ADI and operator splitting methods on option pricing models.  Journal of Computational and Applied Mathematics 247(2013) 162-171.
 \bibitem{AG} Shih-Hau TAN.  Nonlinear Option Pricing: Review and Newton-like Method.  Working report, 2014.
 
 
